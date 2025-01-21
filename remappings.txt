@@ -1,0 +1,2 @@
+@ensdomains/=lib/ens-contracts/
+@openzeppelin/=lib/openzeppelin-contracts/
