@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {INameWrapper} from "@ensdomains/ens-contracts/contracts/wrapper/INameWrapper.sol";
-import {ENSRegistry} from "@ensdomains/ens-contracts/contracts/registry/ENSRegistry.sol";
-import {BaseRegistrarImplementation} from
-    "@ensdomains/ens-contracts/contracts/ethregistrar/BaseRegistrarImplementation.sol";
+import {INameWrapper} from "@ensdomains/contracts/wrapper/INameWrapper.sol";
+import {ENSRegistry} from "@ensdomains/contracts/registry/ENSRegistry.sol";
+import {BaseRegistrarImplementation} from "@ensdomains/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "./interfaces/IPhoneNumberRegistrar.sol";
@@ -57,22 +56,31 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
     /**
      * @dev Register a phone number as a subname
      * @param phoneNumber The phone number to register (must include country code)
-     * @param registrationPeriod The period of registration in seconds
+     * @param duration Registration duration in seconds
      */
-    function register(string calldata phoneNumber, uint256 registrationPeriod) external payable override {
+    function register(string calldata phoneNumber, uint256 duration) external payable {
         // Validate phone number format
         require(PhoneNumberLib.isValidPhoneNumber(phoneNumber), "Invalid phone number format");
 
         // Check if phone number is available
         require(phoneToAddress[phoneNumber] == address(0), "Phone number already registered");
 
+        // Validate duration
+        require(
+            duration >= pricingContract.MIN_REGISTRATION_PERIOD()
+                && duration <= pricingContract.MAX_REGISTRATION_PERIOD(),
+            "Invalid registration period"
+        );
+
         // Calculate registration fee
-        uint256 fee = pricingContract.getRegistrationFee(phoneNumber);
+        uint256 fee = pricingContract.getRegistrationFee(phoneNumber, duration);
         require(msg.value >= fee, "Insufficient payment");
+
+        // Calculate expiry time
+        uint64 expiry = uint64(block.timestamp + duration);
 
         // Create subname with appropriate fuses
         uint32 fuses = PARENT_CANNOT_CONTROL | CANNOT_UNWRAP | CANNOT_TRANSFER;
-        uint64 expiry = uint64(block.timestamp + registrationPeriod);
 
         // Set up name in the wrapper
         nameWrapper.setSubnodeRecord(
