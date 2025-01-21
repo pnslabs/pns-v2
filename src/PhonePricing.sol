@@ -137,7 +137,7 @@ contract PhonePricing is Ownable {
      * @dev View function to get registration fee breakdown by years
      * @param phoneNumber The phone number
      * @param duration Registration duration in seconds
-     * @return years Number of years
+     * @return numberOfYears Number of years
      * @return pricePerYear Price per year
      * @return totalPrice Total price for all years
      */

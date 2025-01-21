@@ -13,5 +13,5 @@ interface IPhoneNumberRegistrar {
      * @dev Renew a phone number registration
      * @param phoneNumber The phone number to renew
      */
-    function renew(string calldata phoneNumber) external payable;
+    function renew(string calldata phoneNumber, uint256 duration) external payable;
 }
