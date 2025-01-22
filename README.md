@@ -4,7 +4,7 @@
 
 Phone Number Service (PNS) is a decentralized protocol built on top of ENS (Ethereum Name Service) that enables users to register their phone numbers as ENS subnames under the `usepns.eth` domain. This allows users to link their phone numbers to their Ethereum addresses, creating a simple and memorable way to send and receive cryptocurrency using phone numbers.
 
-For example: `+2347084462591.usepns.eth` could resolve to `0x742d35Cc6634C0532925a3b844Bc454e4438f44e`
+For example: `+2349089062991.usepns.eth` could resolve to `0x742d35Cc6634C0532925a3b844Bc454e4438f44e`
 
 ## Features
 
