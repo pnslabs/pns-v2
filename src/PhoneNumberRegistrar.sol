@@ -28,20 +28,30 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
     uint32 public constant CANNOT_TRANSFER = 4;
     uint32 public constant PARENT_CANNOT_CONTROL = 65_536;
 
+    // Treasury address
+    address public immutable treasury;
+
     // Mappings to track phone number registrations
     mapping(string => address) public phoneToAddress;
 
     // Events
     event PhoneNumberRegistered(string phoneNumber, address indexed owner, uint256 expiryDate);
     event PhoneNumberRenewed(string phoneNumber, address indexed owner, uint256 expiryDate);
+    event FeesCollected(uint256 amount);
+    event WithdrawalFailed(uint256 amount);
 
-    constructor(ENSRegistry _ens, INameWrapper _nameWrapper, bytes32 _parentNode, PhonePricing _pricingContract)
-        Ownable(msg.sender)
-    {
+    constructor(
+        ENSRegistry _ens,
+        INameWrapper _nameWrapper,
+        bytes32 _parentNode,
+        PhonePricing _pricingContract,
+        address _treasury
+    ) Ownable(msg.sender) {
         ens = _ens;
         nameWrapper = _nameWrapper;
         parentNode = _parentNode;
         pricingContract = _pricingContract;
+        treasury = _treasury;
     }
 
     /**
@@ -87,12 +97,20 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
         // Update mappings
         phoneToAddress[phoneNumber] = msg.sender;
 
-        emit PhoneNumberRegistered(phoneNumber, msg.sender, expiry);
-
-        // Refund excess payment
-        if (msg.value > fee) {
-            payable(msg.sender).transfer(msg.value - fee);
+        // Forward fee to treasury
+        (bool success,) = treasury.call{value: fee}("");
+        if (!success) {
+            emit WithdrawalFailed(fee);
         }
+
+        // Refund excess payment if any
+        uint256 excess = msg.value - fee;
+        if (excess > 0) {
+            (bool refundSuccess,) = msg.sender.call{value: excess}("");
+            require(refundSuccess, "Refund failed");
+        }
+
+        emit PhoneNumberRegistered(phoneNumber, msg.sender, expiry);
     }
 
     /**
@@ -134,12 +152,20 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
             newExpiry
         );
 
-        emit PhoneNumberRenewed(phoneNumber, msg.sender, newExpiry);
-
-        // Refund excess payment
-        if (msg.value > fee) {
-            payable(msg.sender).transfer(msg.value - fee);
+        // Forward fee to treasury
+        (bool success,) = treasury.call{value: fee}("");
+        if (!success) {
+            emit WithdrawalFailed(fee);
         }
+
+        // Refund excess payment if any
+        uint256 excess = msg.value - fee;
+        if (excess > 0) {
+            (bool refundSuccess,) = msg.sender.call{value: excess}("");
+            require(refundSuccess, "Refund failed");
+        }
+
+        emit PhoneNumberRenewed(phoneNumber, msg.sender, newExpiry);
     }
     /**
      * @dev Get the expiry date of a phone number
@@ -150,6 +176,20 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
     function getExpiry(string calldata phoneNumber) external view returns (uint64) {
         uint64 expiry = _getExpiry(phoneNumber);
         return expiry;
+    }
+
+    /**
+     * @dev Emergency withdrawal in case direct transfer fails
+     * @notice This function should only be used if the automatic transfer fails
+     */
+    function withdrawStuckFees() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No fees to withdraw");
+
+        (bool success,) = treasury.call{value: balance}("");
+        require(success, "Withdrawal failed");
+
+        emit FeesCollected(balance);
     }
 
     /**
