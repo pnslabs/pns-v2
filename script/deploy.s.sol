@@ -4,11 +4,12 @@ pragma solidity ^0.8.17;
 import "forge-std/Script.sol";
 import "../src/PhoneNumberRegistrar.sol";
 import "../src/PhonePricing.sol";
+import "@ensdomains/utils/NameEncoder.sol";
 
 contract DeployPNS is Script {
     // Mainnet addresses
     address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
-    address constant NAME_WRAPPER = 0x582224b8d4534F4749EFA4f22eF7241E0C56D4B8;
+    address constant NAME_WRAPPER = 0x0635513f179D50A207757E05759CbD106d7dFcE8; // sepolia
 
     struct CountryMultiplier {
         string countryCode;
@@ -27,9 +28,9 @@ contract DeployPNS is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
-        bytes32 parentNode = vm.envBytes32("PARENT_NODE");
+        string memory parentNodeName = vm.envString("PARENT_NODE");
+        (, bytes32 parentNode) = NameEncoder.dnsEncodeName(parentNodeName);
         uint256 basePrice = vm.envUint("BASE_PRICE"); // e.g., 0.01 ether
-
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy Pricing Contract
