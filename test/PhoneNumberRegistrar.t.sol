@@ -65,7 +65,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_Registration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -98,11 +98,11 @@ contract PhoneNumberRegistrarTest is Test {
 
     function testFail_Registration_InvalidPhoneNumber() public {
         vm.prank(user);
-        registrar.register{value: BASE_PRICE}("1234567890", YEAR_IN_SECONDS); // Missing +
+        registrar.register{value: BASE_PRICE}("11234567890", YEAR_IN_SECONDS); // Missing +
     }
 
     function testFail_Registration_AlreadyRegistered() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 fee = pricing.getRegistrationFee(phoneNumber, YEAR_IN_SECONDS);
 
         vm.prank(user);
@@ -115,13 +115,13 @@ contract PhoneNumberRegistrarTest is Test {
     function testFail_Registration_InsufficientPayment() public {
         vm.prank(user);
         registrar.register{value: BASE_PRICE - 1}(
-            "+1234567890",
+            "+11234567890",
             YEAR_IN_SECONDS
         );
     }
 
     function test_Renewal() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
 
         // First register
@@ -154,11 +154,11 @@ contract PhoneNumberRegistrarTest is Test {
 
     function testFail_Renewal_Unregistered() public {
         vm.prank(user);
-        registrar.renew{value: BASE_PRICE}("+1234567890", YEAR_IN_SECONDS);
+        registrar.renew{value: BASE_PRICE}("+11234567890", YEAR_IN_SECONDS);
     }
 
     function test_Renewal_AfterExpiry() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
 
         // Register
@@ -181,11 +181,11 @@ contract PhoneNumberRegistrarTest is Test {
         );
         (, , uint64 expiry) = wrapper.getData(tokenId);
 
-        assertEq(expiry, block.timestamp + duration);
+        assertEq(expiry, vm.getBlockTimestamp() + duration);
     }
 
     function test_RefundExcessPayment() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
         uint256 excess = 0.5 ether;
@@ -199,7 +199,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_GetExpiry() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -211,7 +211,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_MultiYearRegistration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = 3 * YEAR_IN_SECONDS; // 3 years
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -226,7 +226,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_RegistrationWithCountryMultiplier() public {
-        string memory phoneNumber = "+234123456789"; // Nigerian number
+        string memory phoneNumber = "+2341234567890"; // Nigerian number
         uint256 duration = YEAR_IN_SECONDS;
         uint256 multiplier = 8000; // 80%
 
@@ -244,7 +244,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_RenewalWithCountryMultiplier() public {
-        string memory phoneNumber = "+234123456789";
+        string memory phoneNumber = "+2341234567890";
         uint256 duration = YEAR_IN_SECONDS;
         uint256 multiplier = 8000;
 
@@ -254,6 +254,7 @@ contract PhoneNumberRegistrarTest is Test {
 
         // Register first
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
+
         vm.prank(user);
         registrar.register{value: fee}(phoneNumber, duration);
 
@@ -267,7 +268,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_MaxDurationRegistration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = 10 * YEAR_IN_SECONDS; // Max duration
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -279,7 +280,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function testFail_ExceedMaxDuration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = 11 * YEAR_IN_SECONDS; // Exceeds max
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -288,7 +289,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function testFail_BelowMinDuration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = 364 days; // Below min
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -297,7 +298,7 @@ contract PhoneNumberRegistrarTest is Test {
     }
 
     function test_CannotOverwriteRegistration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
@@ -320,9 +321,9 @@ contract PhoneNumberRegistrarTest is Test {
     function test_BatchOperations() public {
         // Test multiple registrations and renewals in sequence
         string[3] memory phoneNumbers = [
-            "+1234567890",
-            "+234987654321",
-            "+44123456789"
+            "+11234567890",
+            "+2349876543210",
+            "+441234567890"
         ];
         uint256 duration = YEAR_IN_SECONDS;
 
