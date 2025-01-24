@@ -83,18 +83,18 @@ contract PhonePricingTest is Test {
     }
 
     function test_ExtractCountryCode() public {
-        assertEq(pricing.extractCountryCode("+1234567890"), "1");
-        assertEq(pricing.extractCountryCode("+44123456789"), "44");
-        assertEq(pricing.extractCountryCode("+234123456789"), "234");
+        assertEq(pricing.extractCountryCode("+11234567890"), "1");
+        assertEq(pricing.extractCountryCode("+441234567890"), "44");
+        assertEq(pricing.extractCountryCode("+2341234567890"), "234");
     }
 
     function testFail_ExtractCountryCode_InvalidFormat() public {
         // Missing plus
-        pricing.extractCountryCode("1234567890");
+        pricing.extractCountryCode("11234567890");
     }
 
     function test_GetRegistrationFee_StandardPrice() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
 
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
@@ -106,7 +106,7 @@ contract PhonePricingTest is Test {
     }
 
     function test_GetRegistrationFee_WithMultiplier() public {
-        string memory phoneNumber = "+234123456789";
+        string memory phoneNumber = "+2341234567890";
         uint256 multiplier = 8000; // 80%
 
         vm.prank(owner);
@@ -117,7 +117,7 @@ contract PhonePricingTest is Test {
     }
 
     function testFail_GetRegistrationFee_InvalidDuration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
 
         // Too short
         pricing.getRegistrationFee(phoneNumber, 364 days);
@@ -127,7 +127,7 @@ contract PhonePricingTest is Test {
     }
 
     function test_GetFeeDetails() public {
-        string memory phoneNumber = "+234123456789";
+        string memory phoneNumber = "+2341234567890";
         uint256 duration = 2 * YEAR_IN_SECONDS;
         uint256 multiplier = 8000; // 80%
 
@@ -142,7 +142,7 @@ contract PhonePricingTest is Test {
     }
 
     function test_RenewalFeeMatchesRegistration() public {
-        string memory phoneNumber = "+1234567890";
+        string memory phoneNumber = "+11234567890";
         uint256 duration = YEAR_IN_SECONDS;
 
         uint256 regFee = pricing.getRegistrationFee(phoneNumber, duration);

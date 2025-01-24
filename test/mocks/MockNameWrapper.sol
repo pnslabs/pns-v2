@@ -14,8 +14,7 @@ contract MockNameWrapper is INameWrapper {
         uint64 expiry;
     }
 
-    mapping(uint256 => NameData) public names;
-    mapping(bytes32 => bytes) public names_;
+    mapping(uint256 => NameData) public names_;
 
     ENS public ens;
     IBaseRegistrar public registrar;
@@ -28,6 +27,10 @@ contract MockNameWrapper is INameWrapper {
         parentNode = _parentNode;
     }
 
+     function names(bytes32) external view returns (bytes memory) {
+        return hex"";
+     }
+
     function setSubnodeRecord(
         bytes32 parentNode,
         string memory label,
@@ -36,12 +39,12 @@ contract MockNameWrapper is INameWrapper {
         uint64 ttl,
         uint32 fuses,
         uint64 expiry
-    ) external override returns (uint256) {
+    ) external override returns (bytes32) {
         uint256 tokenId = uint256(
             keccak256(abi.encodePacked(parentNode, keccak256(bytes(label))))
         );
-        names[tokenId] = NameData(owner, fuses, expiry);
-        return tokenId;
+        names_[tokenId] = NameData(owner, fuses, expiry);
+        return bytes32(tokenId);
     }
 
     function setChildFuses(
@@ -53,8 +56,8 @@ contract MockNameWrapper is INameWrapper {
         uint256 tokenId = uint256(
             keccak256(abi.encodePacked(parentNode, labelhash))
         );
-        names[tokenId].fuses = fuses;
-        names[tokenId].expiry = expiry;
+        names_[tokenId].fuses = fuses;
+        names_[tokenId].expiry = expiry;
     }
 
     function getData(
@@ -65,7 +68,7 @@ contract MockNameWrapper is INameWrapper {
         override
         returns (address owner, uint32 fuses, uint64 expiry)
     {
-        NameData memory data = names[id];
+        NameData memory data = names_[id];
         return (data.owner, data.fuses, data.expiry);
     }
 
@@ -74,7 +77,7 @@ contract MockNameWrapper is INameWrapper {
     }
 
     function ownerOf(uint256 id) external view override returns (address) {
-        return names[id].owner;
+        return names_[id].owner;
     }
 
     function approve(address to, uint256 tokenId) external override {}
@@ -105,8 +108,7 @@ contract MockNameWrapper is INameWrapper {
         bytes calldata name,
         address wrappedOwner,
         address resolver
-    ) external override returns (uint256) {
-        return 0;
+    ) external override  {
     }
 
     function wrapETH2LD(

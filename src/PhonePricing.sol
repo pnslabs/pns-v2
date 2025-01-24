@@ -88,7 +88,8 @@ contract PhonePricing is Ownable {
 
         // Skip the '+' and take first 1-3 digits
         uint256 codeLength = 0;
-        for (uint256 i = 1; i < 4 && i < phoneBytes.length; i++) {
+
+        for (uint256 i = 1; i < phoneBytes.length - 10 ; i++) {
             if (phoneBytes[i] >= bytes1("0") && phoneBytes[i] <= bytes1("9")) {
                 codeLength++;
             } else {
