@@ -35,9 +35,9 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
 
     mapping(bytes32 => Name) public names;
 
-    event SubdomainRegistered(bytes32 indexed label, address indexed owner, uint64 expiry);
+    event PhoneNumberRegistered(bytes32 indexed label, address indexed owner, uint64 expiry);
 
-    event SubdomainRenewed(bytes32 indexed label, uint64 expiry);
+    event Phone(bytes32 indexed label, uint64 expiry);
 
     event FeesCollected(uint256 amount);
     event WithdrawalFailed(uint256 amount);
@@ -74,10 +74,7 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
      * @param countryCode The country code of the phone number
      * @param duration Registration duration in seconds
      */
-    function register(string calldata phoneNumberHash, string calldata countryCode, uint256 duration)
-        external
-        payable
-    {
+    function register(bytes32 phoneNumberHash, string calldata countryCode, uint256 duration) external payable {
         if (!names[parentNode].active) {
             revert ParentNameNotSetup(parentNode);
         }
@@ -85,20 +82,30 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
         available(node);
 
         // Validate duration
-        require(duration >= pricingContract.MIN_REGISTRATION_PERIOD(), "Invalid registration period");
+        require(
+            duration >= pricingContract.MIN_REGISTRATION_PERIOD()
+                && duration <= pricingContract.MAX_REGISTRATION_PERIOD(),
+            "Invalid registration period"
+        );
+
+        // Calculate registration fee
+        uint256 fee = pricingContract.getRegistrationFee(countryCode, duration);
+        require(msg.value >= fee, "Insufficient payment");
+
+        // Calculate expiry time
+        uint64 expiry = uint64(block.timestamp + duration);
 
         // Create subdomain initially owned by contract
         nameWrapper.setSubnodeOwner(
             parentNode,
-            phoneNumber,
+            string(phoneNumberHash),
             address(this),
             0, // No fuses yet
-            uint64(block.timestamp + 365 days)
+            expiry
         );
 
         // Get node hash for the subdomain
-        bytes32 subnode = keccak256(abi.encodePacked(parentNode, keccak256(bytes(label))));
-
+        bytes32 subnode = _makeNode(parentNode, phoneNumberHash);
         // Set resolver and records
         nameWrapper.setResolver(subnode, defaultResolver);
 
@@ -106,22 +113,88 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
         uint32 fuses = 65_536; // PARENT_CANNOT_CONTROL (emancipated)
         nameWrapper.setSubnodeRecord(
             parentNode,
-            label,
+            string(phoneNumberHash),
             msg.sender,
             defaultResolver,
             0, // TTL
             fuses,
-            uint64(block.timestamp + 365 days)
+            expiry
         );
 
-        emit SubdomainRegistered(label, msg.sender, uint64(block.timestamp + 365 days));
+        emit PhoneNumberRegistered(phoneNumberHash, msg.sender, expiry);
 
-        // Forward fee to owner
-        payable(owner()).transfer(msg.value);
+        // Forward fee to treasury
+        (bool success,) = treasury.call{value: fee}("");
+        if (!success) {
+            emit WithdrawalFailed(fee);
+        }
+
+        // Refund excess payment if any
+        uint256 excess = msg.value - fee;
+        if (excess > 0) {
+            (bool refundSuccess,) = msg.sender.call{value: excess}("");
+            require(refundSuccess, "Refund failed");
+        }
+    }
+    /**
+     * @dev Renew a phone number registration
+     * @param phoneNumberHash The keccak256 hash of the phone number to renew
+     * @param countryCode The country code of the phone number
+     * @param duration Duration to extend registration for
+     */
+
+    function renew(bytes32 phoneNumberHash, string calldata countryCode, uint64 duration) external payable {
+        require(duration >= MIN_REGISTRATION_PERIOD && duration <= MAX_REGISTRATION_PERIOD, "Invalid duration");
+
+        uint256 fee = pricingContract.getRenewalFee(countryCode, duration);
+        require(msg.value >= fee, "Insufficient payment");
+
+        bytes32 node = _makeNode(parentNode, phoneNumberHash);
+        (,, uint64 expiry) = nameWrapper.getData(uint256(node));
+        require(expiry >= block.timestamp, "Phone Number expired");
+
+        uint64 newExpiry = expiry + duration;
+
+        // extend the registration
+        nameWrapper.setChildFuses(
+            parentNode,
+            string(phoneNumberHash),
+            0, // No new fuses needed for renewal
+            newExpiry
+        );
+
+        // Forward fee to treasury
+        (bool success,) = treasury.call{value: fee}("");
+        if (!success) {
+            emit WithdrawalFailed(fee);
+        }
+
+        // Refund excess payment if any
+        uint256 excess = msg.value - fee;
+        if (excess > 0) {
+            (bool refundSuccess,) = msg.sender.call{value: excess}("");
+            require(refundSuccess, "Refund failed");
+        }
+
+        emit PhoneNumberRenewed(phoneNumberHash, newExpiry);
+
+        if (msg.value > fee) {
+            payable(msg.sender).transfer(msg.value - fee);
+        }
     }
 
-    function setRegistrationFee(uint256 _fee) external onlyOwner {
-        registrationFee = _fee;
+    /**
+     * @dev Emergency withdrawal in case direct transfer fails
+     * @notice This function should only be used if the automatic transfer fails
+     */
+    function withdrawStuckFees() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No fees to withdraw");
+
+        (bool success,) = treasury.call{value: balance}("");
+        require(success, "Withdrawal failed");
+
+        emit FeesCollected(balance);
     }
 
     function setDefaultResolver(address _resolver) external onlyOwner {

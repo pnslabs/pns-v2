@@ -51,12 +51,12 @@ contract PhonePricing is Ownable {
 
     /**
      * @dev Calculate renewal fee
-     * @param phoneNumber The phone number being renewed
+     * @param countryCode The country code of the phone number being renewed
      * @param duration Renewal duration in seconds
      * @return uint256 The renewal fee in wei
      */
-    function getRenewalFee(string calldata phoneNumber, uint256 duration) external view returns (uint256) {
-        return this.getRegistrationFee(phoneNumber, duration);
+    function getRenewalFee(string calldata countryCode, uint256 duration) external view returns (uint256) {
+        return this.getRegistrationFee(countryCode, duration);
     }
 
     /**
