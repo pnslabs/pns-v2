@@ -8,6 +8,7 @@ import "@ensdomains/resolvers/PublicResolver.sol";
 import "./interfaces/IPhoneNumberRegistrar.sol";
 import "./libraries/PhoneNumberLib.sol";
 import "./PhonePricing.sol";
+import "./PhoneNumberResolver.sol";
 
 contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
     // Parent node (namehash of usepns.eth)
@@ -23,8 +24,10 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
 
     // Treasury address
     address public immutable treasury;
+
+    uint256 constant COIN_TYPE_ETH = 60;
     // custom resolver
-    address public defaultResolver;
+    PhoneNumberResolver public defaultResolver;
     // Pricing contract
     PhonePricing public pricingContract;
 
@@ -52,7 +55,7 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
     {
         nameWrapper = INameWrapper(_nameWrapper);
         parentNode = _parentNode;
-        defaultResolver = _defaultResolver;
+        defaultResolver = PhoneNumberResolver(_defaultResolver);
         pricing = IPhonePricing(_pricing);
     }
 
@@ -107,7 +110,7 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
         // Get node hash for the subdomain
         bytes32 subnode = _makeNode(parentNode, phoneNumberHash);
         // Set resolver and records
-        nameWrapper.setResolver(subnode, defaultResolver);
+        nameWrapper.setResolver(subnode, address(defaultResolver));
 
         // Transfer ownership to caller with fuses
         uint32 fuses = 65_536; // PARENT_CANNOT_CONTROL (emancipated)
@@ -115,11 +118,14 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
             parentNode,
             string(phoneNumberHash),
             msg.sender,
-            defaultResolver,
+            address(defaultResolver),
             0, // TTL
             fuses,
             expiry
         );
+
+        // Register ETH address to resolver
+        defaultResolver.setAddr(subnode, COIN_TYPE_ETH, abi.encodePacked(msg.sender));
 
         emit PhoneNumberRegistered(phoneNumberHash, msg.sender, expiry);
 
@@ -198,7 +204,7 @@ contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
     }
 
     function setDefaultResolver(address _resolver) external onlyOwner {
-        defaultResolver = _resolver;
+        defaultResolver = PhoneNumberResolver(_resolver);
     }
 
     // Check if a subdomain is available

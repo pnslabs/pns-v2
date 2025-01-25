@@ -31,12 +31,6 @@ contract DeployPNS is Script {
         (, bytes32 parentNode) = NameEncoder.dnsEncodeName(parentNodeName);
         uint256 basePrice = vm.envUint("BASE_PRICE");
         vm.startBroadcast();
-
-        // Set up ENS ownership hierarchy
-        ENSRegistry ens = ENSRegistry(ENS_REGISTRY);
-        bytes32 rootNode = bytes32(0);
-        bytes32 usepnsNode = keccak256("usepns"); // or whatever your TLD is
-
         // Deploy Pricing Contract
         PhonePricing pricing = new PhonePricing(basePrice);
         console.log("PhonePricing deployed at:", address(pricing));
