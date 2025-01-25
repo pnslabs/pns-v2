@@ -31,16 +31,22 @@ For example: `+2349089062991.usepns.eth` could resolve to `0x742d35Cc6634C053292
    - Handles multi-year registration pricing
    - Configurable base prices and multipliers
 
+3. **PhoneNumberResolver.sol**
+   - Implements ENSIP-9 and ENSIP-10 for multichain address resolution
+   - Uses CCIP-read (EIP-3668) for secure offchain data retrieval
+   - Supports both read (GET) and write (POST) operations
+   - Includes signature verification for gateway responses
+
 ### Key Functions
 
 #### PhoneNumberRegistrar.sol
 
 ```solidity
 // Register a phone number
-function register(string calldata phoneNumber, uint256 duration) external payable
+function register(bytes32 phoneNumberHash, string calldata countryCode, uint256 duration) external payable
 
 // Renew a phone number registration
-function renew(string calldata phoneNumber, uint256 duration) external payable
+function renew(bytes32 phoneNumberHash, string calldata countryCode, uint64 duration) external payable
 
 // Get current expiry of a phone number
 function getCurrentExpiry(string calldata phoneNumber) public view returns (uint64)
@@ -56,6 +62,19 @@ function getRegistrationFee(string calldata phoneNumber, uint256 duration) exter
 function getRenewalFee(string calldata phoneNumber, uint256 duration) external view returns (uint256)
 ```
 
+#### PhoneNumberResolver.sol
+
+```solidity
+// Resolve a name using CCIP-read
+function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory)
+
+// Get address for a specific coin type
+function addr(bytes32 node, uint256 coinType) external view returns (bytes memory)
+
+// Set address for a specific coin type
+function setAddr(bytes32 node, uint256 coinType, bytes calldata newAddr) external
+```
+
 ## Security Features
 
 1. **Fuse System**
@@ -68,11 +87,12 @@ function getRenewalFee(string calldata phoneNumber, uint256 duration) external v
    - Country code verification
    - Length validation
 
-3. **Privacy Considerations**
-- No reverse lookups: Users can't query an address to find associated phone numbers
-- No public address-to-phone mapping
-- Phone-to-address mapping is private and only used for ownership verification
-- Users maintain privacy while still enabling forward resolution (phone number → address)
+3. **Privacy and Security**
+   - No reverse lookups: Users can't query an address to find associated phone numbers
+   - No public address-to-phone mapping
+   - Secure offchain data retrieval using CCIP-read (EIP-3668)
+   - Signed gateway responses for data integrity
+   - Separate read (GET) and write (POST) operations
 
 ## Registration Process
 
@@ -116,13 +136,25 @@ Country with 80% multiplier: 0.008 ETH/year
 ```javascript
 // Register a phone number for 2 years
 const phoneNumber = "+2347084462591";
+const phoneNumberHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(phoneNumber));
+const countryCode = "234"; // Nigeria
 const duration = 2 * 365 * 24 * 60 * 60; // 2 years in seconds
 
 // Get registration fee
-const fee = await pricingContract.getRegistrationFee(phoneNumber, duration);
+const fee = await pricingContract.getRegistrationFee(countryCode, duration);
 
 // Register
-await registrar.register(phoneNumber, duration, { value: fee });
+await registrar.register(phoneNumberHash, countryCode, duration, { value: fee });
+```
+
+### Resolver Usage
+```javascript
+// Get ETH address for a phone number
+const node = namehash(phoneNumber + '.usepns.eth');
+const address = await resolver.addr(node, 60); // 60 is COIN_TYPE_ETH
+
+// Set ETH address
+await resolver.setAddr(node, 60, newAddress);
 ```
 
 ### Renewal
