@@ -4,14 +4,17 @@ pragma solidity ^0.8.17;
 interface IPhoneNumberRegistrar {
     /**
      * @dev Register a phone number as a subname
-     * @param phoneNumber The phone number to register (must include country code)
-     * @param registrationPeriod The period of registration in seconds
+     * @param phoneNumberHash The keccak256 hash of the phone number to register (must include country code with the leading 0 removed)
+     * @param countryCode The country code of the phone number
+     * @param duration Registration duration in seconds
      */
-    function register(string calldata phoneNumber, uint256 registrationPeriod) external payable;
+    function register(bytes32 phoneNumberHash, string calldata countryCode, uint256 duration) external payable;
 
     /**
      * @dev Renew a phone number registration
-     * @param phoneNumber The phone number to renew
+     * @param phoneNumberHash The keccak256 hash of the phone number to renew
+     * @param countryCode The country code of the phone number
+     * @param duration Duration to extend registration for
      */
-    function renew(string calldata phoneNumber, uint256 duration) external payable;
+    function renew(bytes32 phoneNumberHash, string calldata countryCode, uint64 duration) external payable;
 }
