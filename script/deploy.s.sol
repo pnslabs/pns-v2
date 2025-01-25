@@ -32,6 +32,11 @@ contract DeployPNS is Script {
         uint256 basePrice = vm.envUint("BASE_PRICE");
         vm.startBroadcast();
 
+        // Set up ENS ownership hierarchy
+        ENSRegistry ens = ENSRegistry(ENS_REGISTRY);
+        bytes32 rootNode = bytes32(0);
+        bytes32 usepnsNode = keccak256("usepns"); // or whatever your TLD is
+
         // Deploy Pricing Contract
         PhonePricing pricing = new PhonePricing(basePrice);
         console.log("PhonePricing deployed at:", address(pricing));
@@ -48,6 +53,12 @@ contract DeployPNS is Script {
             ENSRegistry(ENS_REGISTRY), INameWrapper(NAME_WRAPPER), parentNode, pricing, treasury
         );
         console.log("PhoneNumberRegistrar deployed at:", address(registrar));
+
+        // Set up ENS ownership
+        ens.setOwner(bytes32(0), treasury);
+        // Set up ownership chain with the new registrar address
+        ens.setSubnodeOwner(bytes32(0), usepnsNode, treasury);
+        ens.setOwner(parentNode, address(registrar));
 
         // Set up approvals
         INameWrapper(NAME_WRAPPER).setApprovalForAll(address(registrar), true);

@@ -18,21 +18,12 @@ contract PhoneNumberRegistrarTest is Test {
     address public user;
     address public treasury;
 
-    bytes32 public constant PARENT_NODE =
-        keccak256(abi.encodePacked(bytes32(0), keccak256("usepns")));
+    bytes32 public constant PARENT_NODE = keccak256(abi.encodePacked(bytes32(0), keccak256("usepns")));
     uint256 public constant BASE_PRICE = 0.01 ether;
     uint256 public constant YEAR_IN_SECONDS = 365 days;
 
-    event PhoneNumberRegistered(
-        string phoneNumber,
-        address indexed owner,
-        uint256 expiryDate
-    );
-    event PhoneNumberRenewed(
-        string phoneNumber,
-        address indexed owner,
-        uint256 expiryDate
-    );
+    event PhoneNumberRegistered(string phoneNumber, address indexed owner, uint256 expiryDate);
+    event PhoneNumberRenewed(string phoneNumber, address indexed owner, uint256 expiryDate);
 
     function setUp() public {
         owner = makeAddr("owner");
@@ -45,13 +36,7 @@ contract PhoneNumberRegistrarTest is Test {
         ens = new ENSRegistry();
         wrapper = new MockNameWrapper(PARENT_NODE);
         pricing = new PhonePricing(BASE_PRICE);
-        registrar = new PhoneNumberRegistrar(
-            ens,
-            INameWrapper(address(wrapper)),
-            PARENT_NODE,
-            pricing,
-            treasury
-        );
+        registrar = new PhoneNumberRegistrar(ens, INameWrapper(address(wrapper)), PARENT_NODE, pricing, treasury);
 
         // Set up ENS ownership
         ens.setOwner(bytes32(0), owner);
@@ -70,11 +55,7 @@ contract PhoneNumberRegistrarTest is Test {
         uint256 fee = pricing.getRegistrationFee(phoneNumber, duration);
 
         vm.expectEmit(true, true, true, true);
-        emit PhoneNumberRegistered(
-            phoneNumber,
-            user,
-            block.timestamp + duration
-        );
+        emit PhoneNumberRegistered(phoneNumber, user, block.timestamp + duration);
 
         vm.prank(user);
         registrar.register{value: fee}(phoneNumber, duration);
@@ -84,9 +65,7 @@ contract PhoneNumberRegistrarTest is Test {
 
         // Verify wrapper data
         bytes32 labelhash = keccak256(bytes(phoneNumber));
-        uint256 tokenId = uint256(
-            keccak256(abi.encodePacked(PARENT_NODE, labelhash))
-        );
+        uint256 tokenId = uint256(keccak256(abi.encodePacked(PARENT_NODE, labelhash)));
         (address owner, uint32 fuses, uint64 expiry) = wrapper.getData(tokenId);
 
         assertEq(owner, user);
@@ -114,10 +93,7 @@ contract PhoneNumberRegistrarTest is Test {
 
     function testFail_Registration_InsufficientPayment() public {
         vm.prank(user);
-        registrar.register{value: BASE_PRICE - 1}(
-            "+11234567890",
-            YEAR_IN_SECONDS
-        );
+        registrar.register{value: BASE_PRICE - 1}("+11234567890", YEAR_IN_SECONDS);
     }
 
     function test_Renewal() public {
@@ -133,21 +109,15 @@ contract PhoneNumberRegistrarTest is Test {
         fee = pricing.getRenewalFee(phoneNumber, duration);
 
         vm.expectEmit(true, true, true, true);
-        emit PhoneNumberRenewed(
-            phoneNumber,
-            user,
-            block.timestamp + 2 * duration
-        );
+        emit PhoneNumberRenewed(phoneNumber, user, block.timestamp + 2 * duration);
 
         vm.prank(user);
         registrar.renew{value: fee}(phoneNumber, duration);
 
         // Verify renewal
         bytes32 labelhash = keccak256(bytes(phoneNumber));
-        uint256 tokenId = uint256(
-            keccak256(abi.encodePacked(PARENT_NODE, labelhash))
-        );
-        (, , uint64 expiry) = wrapper.getData(tokenId);
+        uint256 tokenId = uint256(keccak256(abi.encodePacked(PARENT_NODE, labelhash)));
+        (,, uint64 expiry) = wrapper.getData(tokenId);
 
         assertEq(expiry, block.timestamp + 2 * duration);
     }
@@ -176,10 +146,8 @@ contract PhoneNumberRegistrarTest is Test {
 
         // Verify renewal from current time
         bytes32 labelhash = keccak256(bytes(phoneNumber));
-        uint256 tokenId = uint256(
-            keccak256(abi.encodePacked(PARENT_NODE, labelhash))
-        );
-        (, , uint64 expiry) = wrapper.getData(tokenId);
+        uint256 tokenId = uint256(keccak256(abi.encodePacked(PARENT_NODE, labelhash)));
+        (,, uint64 expiry) = wrapper.getData(tokenId);
 
         assertEq(expiry, vm.getBlockTimestamp() + duration);
     }
@@ -320,11 +288,7 @@ contract PhoneNumberRegistrarTest is Test {
 
     function test_BatchOperations() public {
         // Test multiple registrations and renewals in sequence
-        string[3] memory phoneNumbers = [
-            "+11234567890",
-            "+2349876543210",
-            "+441234567890"
-        ];
+        string[3] memory phoneNumbers = ["+11234567890", "+2349876543210", "+441234567890"];
         uint256 duration = YEAR_IN_SECONDS;
 
         // Set multiplier for Nigerian numbers

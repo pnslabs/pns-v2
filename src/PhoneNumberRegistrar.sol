@@ -1,22 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {INameWrapper} from "@ensdomains/wrapper/INameWrapper.sol";
-import {ENSRegistry} from "@ensdomains/registry/ENSRegistry.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import "@ensdomains/wrapper/INameWrapper.sol";
+import "@ensdomains/resolvers/PublicResolver.sol";
 import "./interfaces/IPhoneNumberRegistrar.sol";
 import "./libraries/PhoneNumberLib.sol";
 import "./PhonePricing.sol";
 
-contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receiver {
-    // ENS registry
-    ENSRegistry public immutable ens;
-    // ENS Name Wrapper
-    INameWrapper public immutable nameWrapper;
-    // Pricing contract
-    PhonePricing public pricingContract;
-
+contract PhoneNumberRegistrar is Ownable, ERC1155Holder {
     // Parent node (namehash of usepns.eth)
     bytes32 public immutable parentNode;
 
@@ -30,199 +23,121 @@ contract PhoneNumberRegistrar is IPhoneNumberRegistrar, Ownable, IERC1155Receive
 
     // Treasury address
     address public immutable treasury;
+    // custom resolver
+    address public defaultResolver;
+    // Pricing contract
+    PhonePricing public pricingContract;
 
-    // Mappings to track phone number registrations
-    mapping(string => address) public phoneToAddress;
+    // ENS registry
+    ENSRegistry public immutable ens;
+    // ENS Name Wrapper
+    INameWrapper public immutable nameWrapper;
 
-    // Events
-    event PhoneNumberRegistered(string phoneNumber, address indexed owner, uint256 expiryDate);
-    event PhoneNumberRenewed(string phoneNumber, address indexed owner, uint256 expiryDate);
+    mapping(bytes32 => Name) public names;
+
+    event SubdomainRegistered(bytes32 indexed label, address indexed owner, uint64 expiry);
+
+    event SubdomainRenewed(bytes32 indexed label, uint64 expiry);
+
     event FeesCollected(uint256 amount);
     event WithdrawalFailed(uint256 amount);
 
-    constructor(
-        ENSRegistry _ens,
-        INameWrapper _nameWrapper,
-        bytes32 _parentNode,
-        PhonePricing _pricingContract,
-        address _treasury
-    ) Ownable(msg.sender) {
-        ens = _ens;
-        nameWrapper = _nameWrapper;
+    error ParentNameNotSetup(bytes32 parentNode);
+    error Unavailable();
+    error Unauthorised(bytes32 node);
+    error NameNotRegistered();
+
+    constructor(address _nameWrapper, bytes32 _parentNode, address _defaultResolver, address _pricing)
+        Ownable(msg.sender)
+    {
+        nameWrapper = INameWrapper(_nameWrapper);
         parentNode = _parentNode;
-        pricingContract = _pricingContract;
-        treasury = _treasury;
+        defaultResolver = _defaultResolver;
+        pricing = IPhonePricing(_pricing);
+    }
+
+    modifier authorised(bytes32 node) {
+        if (!wrapper.canModifyName(node, msg.sender)) {
+            revert Unauthorised(node);
+        }
+        _;
+    }
+
+    function setupDomain(bytes32 node, bool active) external virtual authorised(node) {
+        names[node] = Name({pricer: pricingContract, beneficiary: treasury, active: active});
+        emit NameSetup(node, address(pricingContract), treasury, active);
     }
 
     /**
      * @dev Register a phone number as a subname
-     * @param phoneNumber The phone number to register (must include country code)
+     * @param phoneNumberHash The keccak256 hash of the phone number to register (must include country code with the leading 0 removed)
+     * @param countryCode The country code of the phone number
      * @param duration Registration duration in seconds
      */
-    function register(string calldata phoneNumber, uint256 duration) external payable {
-        // Validate phone number format
-        require(PhoneNumberLib.isValidPhoneNumber(phoneNumber), "Invalid phone number format");
-
-        // Check if phone number is available
-        require(phoneToAddress[phoneNumber] == address(0), "Phone number already registered");
+    function register(string calldata phoneNumberHash, string calldata countryCode, uint256 duration)
+        external
+        payable
+    {
+        if (!names[parentNode].active) {
+            revert ParentNameNotSetup(parentNode);
+        }
+        bytes32 node = _makeNode(parentNode, phoneNumberHash);
+        available(node);
 
         // Validate duration
-        require(
-            duration >= pricingContract.MIN_REGISTRATION_PERIOD()
-                && duration <= pricingContract.MAX_REGISTRATION_PERIOD(),
-            "Invalid registration period"
-        );
+        require(duration >= pricingContract.MIN_REGISTRATION_PERIOD(), "Invalid registration period");
 
-        // Calculate registration fee
-        uint256 fee = pricingContract.getRegistrationFee(phoneNumber, duration);
-        require(msg.value >= fee, "Insufficient payment");
-
-        // Calculate expiry time
-        uint64 expiry = uint64(block.timestamp + duration);
-
-        // Create subname with appropriate fuses
-        uint32 fuses = PARENT_CANNOT_CONTROL | CANNOT_UNWRAP | CANNOT_TRANSFER;
-
-        // Set up name in the wrapper
-        nameWrapper.setSubnodeRecord(
+        // Create subdomain initially owned by contract
+        nameWrapper.setSubnodeOwner(
             parentNode,
             phoneNumber,
+            address(this),
+            0, // No fuses yet
+            uint64(block.timestamp + 365 days)
+        );
+
+        // Get node hash for the subdomain
+        bytes32 subnode = keccak256(abi.encodePacked(parentNode, keccak256(bytes(label))));
+
+        // Set resolver and records
+        nameWrapper.setResolver(subnode, defaultResolver);
+
+        // Transfer ownership to caller with fuses
+        uint32 fuses = 65_536; // PARENT_CANNOT_CONTROL (emancipated)
+        nameWrapper.setSubnodeRecord(
+            parentNode,
+            label,
             msg.sender,
-            address(nameWrapper), // Use NameWrapper as resolver
+            defaultResolver,
             0, // TTL
             fuses,
-            expiry
+            uint64(block.timestamp + 365 days)
         );
 
-        // Update mappings
-        phoneToAddress[phoneNumber] = msg.sender;
+        emit SubdomainRegistered(label, msg.sender, uint64(block.timestamp + 365 days));
 
-        // Forward fee to treasury
-        (bool success,) = treasury.call{value: fee}("");
-        if (!success) {
-            emit WithdrawalFailed(fee);
+        // Forward fee to owner
+        payable(owner()).transfer(msg.value);
+    }
+
+    function setRegistrationFee(uint256 _fee) external onlyOwner {
+        registrationFee = _fee;
+    }
+
+    function setDefaultResolver(address _resolver) external onlyOwner {
+        defaultResolver = _resolver;
+    }
+
+    // Check if a subdomain is available
+    function available(bytes32 node) public view virtual returns (bool) {
+        try wrapper.getData(uint256(node)) returns (address, uint32, uint64 expiry) {
+            return expiry < block.timestamp;
+        } catch {
+            return true;
         }
-
-        // Refund excess payment if any
-        uint256 excess = msg.value - fee;
-        if (excess > 0) {
-            (bool refundSuccess,) = msg.sender.call{value: excess}("");
-            require(refundSuccess, "Refund failed");
-        }
-
-        emit PhoneNumberRegistered(phoneNumber, msg.sender, expiry);
     }
 
-    /**
-     * @dev Renew a phone number registration
-     * @param phoneNumber The phone number to renew
-     * @param duration Duration to extend registration for
-     */
-    function renew(string calldata phoneNumber, uint256 duration) external payable {
-        // Verify phone number is registered
-        require(phoneToAddress[phoneNumber] != address(0), "Phone number not registered");
-
-        // Validate duration
-        require(
-            duration >= pricingContract.MIN_REGISTRATION_PERIOD()
-                && duration <= pricingContract.MAX_REGISTRATION_PERIOD(),
-            "Invalid renewal period"
-        );
-
-        // Calculate renewal fee
-        uint256 fee = pricingContract.getRenewalFee(phoneNumber, duration);
-        require(msg.value >= fee, "Insufficient payment");
-
-        // Get current expiry
-        uint64 currentExpiry = _getExpiry(phoneNumber);
-
-        // Calculate new expiry (extends from current expiry or now, whichever is later)
-        uint64 newExpiry;
-        if (currentExpiry > block.timestamp) {
-            newExpiry = currentExpiry + uint64(duration);
-        } else {
-            newExpiry = uint64(block.timestamp + duration);
-        }
-
-        // Extend the registration
-        nameWrapper.setChildFuses(
-            parentNode,
-            bytes32(keccak256(bytes(phoneNumber))),
-            uint32(0), // No new fuses needed for renewal
-            newExpiry
-        );
-
-        // Forward fee to treasury
-        (bool success,) = treasury.call{value: fee}("");
-        if (!success) {
-            emit WithdrawalFailed(fee);
-        }
-
-        // Refund excess payment if any
-        uint256 excess = msg.value - fee;
-        if (excess > 0) {
-            (bool refundSuccess,) = msg.sender.call{value: excess}("");
-            require(refundSuccess, "Refund failed");
-        }
-
-        emit PhoneNumberRenewed(phoneNumber, msg.sender, newExpiry);
-    }
-    /**
-     * @dev Get the expiry date of a phone number
-     * @param phoneNumber The phone number to check
-     * @return The expiry date as a timestamp
-     */
-
-    function getExpiry(string calldata phoneNumber) external view returns (uint64) {
-        uint64 expiry = _getExpiry(phoneNumber);
-        return expiry;
-    }
-
-    /**
-     * @dev Emergency withdrawal in case direct transfer fails
-     * @notice This function should only be used if the automatic transfer fails
-     */
-    function withdrawStuckFees() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No fees to withdraw");
-
-        (bool success,) = treasury.call{value: balance}("");
-        require(success, "Withdrawal failed");
-
-        emit FeesCollected(balance);
-    }
-
-    /**
-     * @dev Get the expiry date of a phone number
-     * @param phoneNumber The phone number to check
-     * @return The expiry date as a timestamp
-     */
-    function _getExpiry(string calldata phoneNumber) internal view returns (uint64) {
-        (,, uint64 expiry) =
-            nameWrapper.getData(uint256(keccak256(abi.encodePacked(parentNode, keccak256(bytes(phoneNumber))))));
-        return expiry;
-    }
-
-    // Implementation of IERC1155Receiver
-    function onERC1155Received(address, address, uint256, uint256, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return this.onERC1155Received.selector;
-    }
-
-    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return this.onERC1155BatchReceived.selector;
-    }
-
-    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
-        return interfaceId == type(IERC1155Receiver).interfaceId;
+    function _makeNode(bytes32 node, bytes32 labelhash) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(node, labelhash));
     }
 }
