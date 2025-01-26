@@ -30,7 +30,9 @@ contract DeployPNS is Script {
         string memory parentNodeName = vm.envString("PARENT_NODE");
         (, bytes32 parentNode) = NameEncoder.dnsEncodeName(parentNodeName);
         uint256 basePrice = vm.envUint("BASE_PRICE");
+
         vm.startBroadcast();
+
         // Deploy Pricing Contract
         PhonePricing pricing = new PhonePricing(basePrice);
         console.log("PhonePricing deployed at:", address(pricing));
@@ -42,17 +44,14 @@ contract DeployPNS is Script {
             console.log("Set multiplier for country %s to %d basis points", cm.countryCode, cm.multiplier);
         }
 
-        // Deploy Registrar
-        PhoneNumberRegistrar registrar = new PhoneNumberRegistrar(
-            ENSRegistry(ENS_REGISTRY), INameWrapper(NAME_WRAPPER), parentNode, pricing, treasury
-        );
-        console.log("PhoneNumberRegistrar deployed at:", address(registrar));
+        // Deploy Resolver
+        PhoneNumberResolver resolver = new PhoneNumberResolver("https://", treasury);
+        console.log("PhoneNumberResolver deployed at:", address(resolver));
 
-        // Set up ENS ownership
-        ens.setOwner(bytes32(0), treasury);
-        // Set up ownership chain with the new registrar address
-        ens.setSubnodeOwner(bytes32(0), usepnsNode, treasury);
-        ens.setOwner(parentNode, address(registrar));
+        // Deploy Registrar with updated constructor params
+        PhoneNumberRegistrar registrar =
+            new PhoneNumberRegistrar(address(NAME_WRAPPER), parentNode, address(resolver), address(pricing));
+        console.log("PhoneNumberRegistrar deployed at:", address(registrar));
 
         // Set up approvals
         INameWrapper(NAME_WRAPPER).setApprovalForAll(address(registrar), true);
